@@ -9,6 +9,7 @@ import Topbar from "@/components/app/Topbar";
 const COLORS = ["#6C5CE7","#22D3EE","#10B981","#F59E0B","#0F172A","#EF4444"];
 
 const inputCls = "w-full bg-[#F2F4F6] rounded-lg px-4 py-2.5 text-sm text-[#191c1e] placeholder:text-[#787586] outline-none focus:bg-white focus:ring-2 focus:ring-[#6C5CE7]/25 transition-all";
+const labelCls = "block text-xs font-semibold text-[#474554] mb-1.5 tracking-wide";
 
 function statusBadge(status: string) {
   const col = COLUMNS.find(c => c.id === status);
@@ -27,6 +28,8 @@ export default function ClientsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [name, setName] = useState("");
   const [color, setColor] = useState(COLORS[0]);
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
 
   const selectedClient = selectedId ? clients.find(c => c.id === selectedId) ?? null : null;
   const clientDeals = selectedClient ? deals.filter(d => d.client === selectedClient.name) : [];
@@ -35,11 +38,10 @@ export default function ClientsPage() {
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
-    addClient(name.trim(), color);
-    setName(""); setColor(COLORS[0]); setModalOpen(false);
+    addClient(name.trim(), color, email.trim() || undefined, phone.trim() || undefined);
+    setName(""); setColor(COLORS[0]); setEmail(""); setPhone(""); setModalOpen(false);
   };
 
-  // Loading state
   if (loading) {
     return (
       <>
@@ -59,7 +61,6 @@ export default function ClientsPage() {
         {/* Client grid */}
         <main className={`flex-1 overflow-y-auto p-6 md:p-8 transition-all duration-300 ${selectedClient ? "md:mr-[400px]" : ""}`}>
 
-          {/* Empty state */}
           {clients.length === 0 ? (
             <div className="flex-1 flex items-center justify-center min-h-[60vh]">
               <div className="text-center max-w-sm">
@@ -72,16 +73,10 @@ export default function ClientsPage() {
                   </svg>
                 </div>
                 <h3 className="font-display font-extrabold text-[#0B0F19] text-xl mb-2">No clients yet</h3>
-                <p className="text-sm text-[#64748B] mb-6 leading-relaxed">
-                  Add your first client to start managing your agency relationships.
-                </p>
-                <button
-                  onClick={() => setModalOpen(true)}
-                  className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-[#6C5CE7] to-[#22D3EE] shadow-[0_4px_16px_rgba(108,92,231,0.35)] hover:shadow-[0_6px_24px_rgba(108,92,231,0.45)] hover:scale-[1.02] active:scale-[0.98] transition-all"
-                >
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                    <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                  </svg>
+                <p className="text-sm text-[#64748B] mb-6 leading-relaxed">Add your first client to start managing your agency relationships.</p>
+                <button onClick={() => setModalOpen(true)}
+                  className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-[#6C5CE7] to-[#22D3EE] shadow-[0_4px_16px_rgba(108,92,231,0.35)] hover:shadow-[0_6px_24px_rgba(108,92,231,0.45)] hover:scale-[1.02] active:scale-[0.98] transition-all">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
                   Add your first client
                 </button>
               </div>
@@ -94,20 +89,23 @@ export default function ClientsPage() {
                   const cRevenue = cDeals.reduce((s, d) => s + d.value, 0);
                   const isSelected = selectedId === client.id;
                   return (
-                    <button
-                      key={client.id}
-                      onClick={() => setSelectedId(isSelected ? null : client.id)}
-                      className={`text-left bg-white rounded-2xl shadow-[0_2px_8px_rgba(15,23,42,0.06)] hover:shadow-[0_8px_24px_rgba(108,92,231,0.10)] transition-all duration-200 hover:-translate-y-0.5 p-6 ${isSelected ? "ring-2 ring-[#6C5CE7]" : ""}`}
-                    >
+                    <button key={client.id} onClick={() => setSelectedId(isSelected ? null : client.id)}
+                      className={`text-left bg-white rounded-2xl shadow-[0_2px_8px_rgba(15,23,42,0.06)] hover:shadow-[0_8px_24px_rgba(108,92,231,0.10)] transition-all duration-200 hover:-translate-y-0.5 p-6 ${isSelected ? "ring-2 ring-[#6C5CE7]" : ""}`}>
                       <div className="flex items-center gap-4 mb-4">
                         <div className="w-12 h-12 rounded-xl flex items-center justify-center text-white font-bold text-sm flex-shrink-0" style={{ backgroundColor: client.color }}>
                           {client.initials}
                         </div>
-                        <div>
-                          <p className="font-display font-bold text-[#0B0F19]">{client.name}</p>
+                        <div className="min-w-0">
+                          <p className="font-display font-bold text-[#0B0F19] truncate">{client.name}</p>
                           <p className="text-xs text-[#64748B] mt-0.5">{cDeals.length} active deal{cDeals.length !== 1 ? "s" : ""}</p>
                         </div>
                       </div>
+                      {(client.email || client.phone) && (
+                        <div className="flex flex-col gap-1 mb-4">
+                          {client.email && <p className="text-xs text-[#64748B] truncate">{client.email}</p>}
+                          {client.phone && <p className="text-xs text-[#64748B]">{client.phone}</p>}
+                        </div>
+                      )}
                       <div className="pt-4 border-t border-[#F1F5F9]">
                         <p className="text-xs text-[#94A3B8] font-medium uppercase tracking-wide">Total Value</p>
                         <p className="font-display font-extrabold text-xl text-[#6C5CE7] mt-0.5">{formatCurrency(cRevenue)}</p>
@@ -117,14 +115,10 @@ export default function ClientsPage() {
                 })}
 
                 {/* Add client tile */}
-                <button
-                  onClick={() => setModalOpen(true)}
-                  className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(15,23,42,0.06)] p-6 flex flex-col items-center justify-center gap-2 border-2 border-dashed border-[#E2E8F0] hover:border-[#6C5CE7]/40 hover:shadow-[0_8px_24px_rgba(108,92,231,0.08)] transition-all duration-200 group min-h-[148px]"
-                >
+                <button onClick={() => setModalOpen(true)}
+                  className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(15,23,42,0.06)] p-6 flex flex-col items-center justify-center gap-2 border-2 border-dashed border-[#E2E8F0] hover:border-[#6C5CE7]/40 hover:shadow-[0_8px_24px_rgba(108,92,231,0.08)] transition-all duration-200 group min-h-[148px]">
                   <div className="w-10 h-10 rounded-xl bg-[#6C5CE7]/10 flex items-center justify-center group-hover:bg-[#6C5CE7]/15 transition-colors">
-                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                      <path d="M10 4v12M4 10h12" stroke="#6C5CE7" strokeWidth="1.5" strokeLinecap="round" />
-                    </svg>
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 4v12M4 10h12" stroke="#6C5CE7" strokeWidth="1.5" strokeLinecap="round" /></svg>
                   </div>
                   <p className="text-sm font-semibold text-[#64748B] group-hover:text-[#6C5CE7] transition-colors">Add Client</p>
                 </button>
@@ -141,22 +135,37 @@ export default function ClientsPage() {
           {selectedClient && (
             <>
               <div className="flex items-center justify-between px-6 py-5 border-b border-[#F1F5F9]">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm" style={{ backgroundColor: selectedClient.color }}>
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm flex-shrink-0" style={{ backgroundColor: selectedClient.color }}>
                     {selectedClient.initials}
                   </div>
-                  <div>
-                    <h2 className="font-display font-bold text-[#0B0F19] leading-tight">{selectedClient.name}</h2>
+                  <div className="min-w-0">
+                    <h2 className="font-display font-bold text-[#0B0F19] leading-tight truncate">{selectedClient.name}</h2>
                     <p className="text-xs text-[#64748B]">{clientDeals.length} deal{clientDeals.length !== 1 ? "s" : ""} · {formatCurrency(clientRevenue)}</p>
                   </div>
                 </div>
-                <button
-                  onClick={() => setSelectedId(null)}
-                  className="w-8 h-8 rounded-lg flex items-center justify-center text-[#94A3B8] hover:bg-[#F1F5F9] transition-colors"
-                >
+                <button onClick={() => setSelectedId(null)} className="w-8 h-8 rounded-lg flex items-center justify-center text-[#94A3B8] hover:bg-[#F1F5F9] transition-colors flex-shrink-0">
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
                 </button>
               </div>
+
+              {/* Contact info */}
+              {(selectedClient.email || selectedClient.phone) && (
+                <div className="px-6 py-4 border-b border-[#F1F5F9] flex flex-col gap-2">
+                  {selectedClient.email && (
+                    <a href={`mailto:${selectedClient.email}`} className="flex items-center gap-2 text-sm text-[#64748B] hover:text-[#6C5CE7] transition-colors">
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="3" width="12" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.3"/><path d="M1 4l6 4 6-4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
+                      {selectedClient.email}
+                    </a>
+                  )}
+                  {selectedClient.phone && (
+                    <a href={`tel:${selectedClient.phone}`} className="flex items-center gap-2 text-sm text-[#64748B] hover:text-[#6C5CE7] transition-colors">
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 2h2.5l1 3-1.5 1a7 7 0 003 3l1-1.5 3 1V11a1 1 0 01-1 1A9 9 0 012 3a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      {selectedClient.phone}
+                    </a>
+                  )}
+                </div>
+              )}
 
               <div className="flex-1 overflow-y-auto p-5">
                 {clientDeals.length === 0 ? (
@@ -171,23 +180,13 @@ export default function ClientsPage() {
                   <div className="flex flex-col gap-3">
                     <p className="text-xs font-semibold text-[#94A3B8] uppercase tracking-wide mb-1">Deals</p>
                     {clientDeals.map(deal => (
-                      <Link
-                        key={deal.id}
-                        href={`/app/deals/${deal.id}`}
-                        className="block bg-[#F8FAFC] hover:bg-white rounded-xl p-4 hover:shadow-[0_4px_16px_rgba(108,92,231,0.08)] transition-all duration-200 group"
-                      >
+                      <Link key={deal.id} href={`/app/deals/${deal.id}`}
+                        className="block bg-[#F8FAFC] hover:bg-white rounded-xl p-4 hover:shadow-[0_4px_16px_rgba(108,92,231,0.08)] transition-all duration-200 group">
                         <div className="flex items-start justify-between gap-2 mb-2">
                           <p className="font-semibold text-sm text-[#0B0F19] group-hover:text-[#6C5CE7] transition-colors leading-tight">{deal.name}</p>
                           {statusBadge(deal.status)}
                         </div>
                         <p className="font-display font-bold text-[#6C5CE7]">{formatCurrency(deal.value)}</p>
-                        {deal.tags.length > 0 && (
-                          <div className="flex gap-1 mt-2 flex-wrap">
-                            {deal.tags.map(tag => (
-                              <span key={tag} className="text-[10px] font-medium bg-[#6C5CE7]/8 text-[#6C5CE7] px-2 py-0.5 rounded-full">{tag}</span>
-                            ))}
-                          </div>
-                        )}
                       </Link>
                     ))}
                   </div>
@@ -206,7 +205,7 @@ export default function ClientsPage() {
             <div className="flex items-center justify-between px-6 py-5 border-b border-[#F1F5F9]">
               <div>
                 <h2 className="font-display font-extrabold text-[#0B0F19] tracking-tight">Add Client</h2>
-                <p className="text-xs text-[#64748B] mt-0.5">Enter the agency or client name</p>
+                <p className="text-xs text-[#64748B] mt-0.5">Enter client or agency details</p>
               </div>
               <button onClick={() => setModalOpen(false)} className="w-8 h-8 rounded-lg flex items-center justify-center text-[#94A3B8] hover:bg-[#F1F5F9] transition-colors">
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
@@ -214,17 +213,24 @@ export default function ClientsPage() {
             </div>
             <form onSubmit={handleAdd} className="px-6 py-5 flex flex-col gap-4">
               <div>
-                <label className="block text-xs font-semibold text-[#474554] mb-1.5 tracking-wide">Client / Agency Name *</label>
+                <label className={labelCls}>Client / Agency Name *</label>
                 <input autoFocus type="text" placeholder="e.g. Pulse Agency" value={name} onChange={e => setName(e.target.value)} required className={inputCls} />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-[#474554] mb-2 tracking-wide">Colour</label>
+                <label className={labelCls}>Email</label>
+                <input type="email" placeholder="contact@agency.com" value={email} onChange={e => setEmail(e.target.value)} className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Phone</label>
+                <input type="tel" placeholder="+1 234 567 8900" value={phone} onChange={e => setPhone(e.target.value)} className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Colour</label>
                 <div className="flex gap-2">
                   {COLORS.map(c => (
                     <button key={c} type="button" onClick={() => setColor(c)}
                       className={`w-7 h-7 rounded-full transition-all ${color === c ? "ring-2 ring-offset-2 ring-[#6C5CE7] scale-110" : "hover:scale-105"}`}
-                      style={{ backgroundColor: c }}
-                    />
+                      style={{ backgroundColor: c }} />
                   ))}
                 </div>
               </div>

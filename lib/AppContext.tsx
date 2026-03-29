@@ -9,6 +9,8 @@ export interface Client {
   name: string;
   initials: string;
   color: string;
+  email?: string;
+  phone?: string;
 }
 
 export interface Artist {
@@ -17,6 +19,8 @@ export interface Artist {
   genre: string;
   initials: string;
   color: string;
+  email?: string;
+  phone?: string;
 }
 
 interface AppContextValue {
@@ -24,8 +28,8 @@ interface AppContextValue {
   deals: Deal[];
   artists: Artist[];
   loading: boolean;
-  addClient: (name: string, color: string) => Client;
-  addArtist: (name: string, genre: string, color: string) => void;
+  addClient: (name: string, color: string, email?: string, phone?: string) => Client;
+  addArtist: (name: string, genre: string, color: string, email?: string, phone?: string) => Artist;
   addDeal: (data: { name: string; client: string; value: number; status: DealStatus; description: string; artistIds?: string[] }) => Promise<string | null>;
   updateDeal: (deal: Deal) => void;
   deleteDeal: (id: string) => void;
@@ -38,7 +42,6 @@ function toInitials(name: string) {
   return name.trim().split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
 }
 
-// DB stores capitalized status ('Lead'), TypeScript uses lowercase ('lead')
 function toDbStatus(s: DealStatus): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
@@ -72,7 +75,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (dealsErr) console.error("[AppContext] Fetch deals error:", dealsErr.message);
       if (clientsErr) console.error("[AppContext] Fetch clients error:", clientsErr.message);
       if (artistsErr) console.error("[AppContext] Fetch artists error:", artistsErr.message);
-      console.log("[AppContext] Loaded deals:", dealsData?.length ?? 0, "clients:", clientsData?.length ?? 0, "artists:", artistsData?.length ?? 0);
 
       if (dealsData) {
         setDeals(dealsData.map(d => ({
@@ -94,6 +96,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           name: c.name,
           initials: toInitials(c.name),
           color: c.color ?? "#6C5CE7",
+          email: c.email ?? undefined,
+          phone: c.phone ?? undefined,
         })));
       }
 
@@ -104,6 +108,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           genre: a.genre ?? "—",
           initials: toInitials(a.name),
           color: a.color ?? "#6C5CE7",
+          email: a.email ?? undefined,
+          phone: a.phone ?? undefined,
         })));
       }
 
@@ -112,49 +118,44 @@ export function AppProvider({ children }: { children: ReactNode }) {
     load();
   }, []);
 
-  // Optimistic add — inserts locally with temp ID, then swaps in real Supabase UUID
-  const addClient = useCallback((name: string, color: string): Client => {
+  const addClient = useCallback((name: string, color: string, email?: string, phone?: string): Client => {
     const tempId = `c${Date.now()}`;
-    const newClient: Client = { id: tempId, name: name.trim(), initials: toInitials(name), color };
+    const newClient: Client = { id: tempId, name: name.trim(), initials: toInitials(name), color, email, phone };
     setClients(prev => [...prev, newClient]);
 
     if (userId) {
       supabase.from("clients")
-        .insert({ name: name.trim(), color, user_id: userId })
+        .insert({ name: name.trim(), color, email: email || null, phone: phone || null, user_id: userId })
         .select()
         .single()
         .then(({ data, error }) => {
           if (error) console.error("[addClient] insert error:", error.message);
-          if (data) {
-            setClients(prev => prev.map(c => c.id === tempId ? { ...c, id: data.id } : c));
-          }
+          if (data) setClients(prev => prev.map(c => c.id === tempId ? { ...c, id: data.id } : c));
         });
     }
 
     return newClient;
   }, [userId]);
 
-  // Optimistic add artist — same pattern as addClient
-  const addArtist = useCallback((name: string, genre: string, color: string) => {
+  const addArtist = useCallback((name: string, genre: string, color: string, email?: string, phone?: string): Artist => {
     const tempId = `a${Date.now()}`;
-    const newArtist: Artist = { id: tempId, name: name.trim(), genre: genre.trim() || "—", initials: toInitials(name), color };
+    const newArtist: Artist = { id: tempId, name: name.trim(), genre: genre.trim() || "—", initials: toInitials(name), color, email, phone };
     setArtists(prev => [newArtist, ...prev]);
 
     if (userId) {
       supabase.from("artists")
-        .insert({ name: name.trim(), genre: genre.trim() || "", color, user_id: userId })
+        .insert({ name: name.trim(), genre: genre.trim() || "", color, email: email || null, phone: phone || null, user_id: userId })
         .select()
         .single()
         .then(({ data, error }) => {
           if (error) console.error("[addArtist] insert error:", error.message);
-          if (data) {
-            setArtists(prev => prev.map(a => a.id === tempId ? { ...a, id: data.id } : a));
-          }
+          if (data) setArtists(prev => prev.map(a => a.id === tempId ? { ...a, id: data.id } : a));
         });
     }
+
+    return newArtist;
   }, [userId]);
 
-  // Insert-first: get fresh auth user, insert deal, link artists, only update state on success
   const addDeal = useCallback(async (data: {
     name: string;
     client: string;
@@ -194,7 +195,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     console.log("[addDeal] insert success:", inserted);
 
-    // Link artists via join table
     const artistIds = data.artistIds?.filter(Boolean) ?? [];
     if (artistIds.length > 0) {
       const { error: linkError } = await supabase.from("deal_artists").insert(
@@ -222,23 +222,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return null;
   }, []);
 
-  // Optimistic update — capitalizes status for DB
   const updateDeal = useCallback((updated: Deal) => {
     setDeals(prev => prev.map(d => d.id === updated.id ? updated : d));
     supabase.from("deals")
-      .update({
-        status: toDbStatus(updated.status),
-        name: updated.name,
-        client_name: updated.client,
-        value: updated.value,
-      })
+      .update({ status: toDbStatus(updated.status), name: updated.name, client_name: updated.client, value: updated.value })
       .eq("id", updated.id)
       .then(({ error }) => {
         if (error) console.error("[updateDeal] error:", error.message);
       });
   }, []);
 
-  // Optimistic delete with background Supabase sync
   const deleteDeal = useCallback((id: string) => {
     setDeals(prev => prev.filter(d => d.id !== id));
     supabase.from("deals")

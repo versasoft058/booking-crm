@@ -1,23 +1,72 @@
+"use client";
+export const dynamic = "force-dynamic";
 
-export const dynamic = 'force-dynamic'
+import { useState, useEffect } from "react";
+import { useParams } from "next/navigation";
 import Link from "next/link";
-import { initialDeals, COLUMNS, formatCurrency } from "@/lib/mockData";
-import type { Metadata } from "next";
+import { COLUMNS, formatCurrency, DealStatus } from "@/lib/mockData";
+import { supabase } from "@/lib/supabaseClient";
+import { useApp } from "@/lib/AppContext";
 
-interface Props { params: Promise<{ id: string }> }
-
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { id } = await params;
-  const deal = initialDeals.find((d) => d.id === id);
-  return { title: deal ? `${deal.name} — KineticCRM` : "Deal — KineticCRM" };
+interface ArtistRow {
+  id: string;
+  name: string;
+  color: string;
+  genre: string;
 }
 
-export default async function DealDetailPage({ params }: Props) {
-  const { id } = await params;
-  const deal = initialDeals.find((d) => d.id === id);
-  const col = deal ? COLUMNS.find((c) => c.id === deal.status) : null;
+function toInitials(name: string) {
+  return name.trim().split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+}
 
-  if (!deal || !col) {
+export default function DealDetailPage() {
+  const { id } = useParams<{ id: string }>();
+  const { deals, loading: ctxLoading } = useApp();
+  const [artists, setArtists] = useState<ArtistRow[]>([]);
+  const [artistsLoading, setArtistsLoading] = useState(true);
+
+  // Find deal in context (already fetched from Supabase on app mount)
+  const deal = deals.find(d => d.id === id) ?? null;
+
+  useEffect(() => {
+    if (!id) return;
+    async function loadArtists() {
+      try {
+        const { data, error } = await supabase
+          .from("deal_artists")
+          .select("artists(*)")
+          .eq("deal_id", id);
+
+        if (error) {
+          // Table may not exist yet — that's fine, just show no artists
+          console.warn("[DealDetail] deal_artists fetch:", error.message);
+        } else {
+          setArtists(
+            (data ?? [])
+              .map((row: { artists: ArtistRow | ArtistRow[] | null }) =>
+                Array.isArray(row.artists) ? row.artists[0] : row.artists
+              )
+              .filter(Boolean) as ArtistRow[]
+          );
+        }
+      } catch (e) {
+        console.warn("[DealDetail] deal_artists exception:", e);
+      }
+      setArtistsLoading(false);
+    }
+    loadArtists();
+  }, [id]);
+
+  // Wait for context to finish loading
+  if (ctxLoading || artistsLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="w-8 h-8 rounded-full border-2 border-[#6C5CE7] border-t-transparent animate-spin" />
+      </div>
+    );
+  }
+
+  if (!deal) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-4 p-8">
         <p className="text-[#64748B]">Deal not found.</p>
@@ -27,6 +76,14 @@ export default async function DealDetailPage({ params }: Props) {
       </div>
     );
   }
+
+  const col = COLUMNS.find(c => c.id === deal.status) ?? COLUMNS[0];
+  const createdDate = deal.createdAt
+    ? new Date(deal.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
+    : "—";
+  const createdShort = deal.createdAt
+    ? new Date(deal.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+    : "—";
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -54,51 +111,38 @@ export default async function DealDetailPage({ params }: Props) {
 
       {/* Content */}
       <div className="p-6 md:p-8 grid md:grid-cols-3 gap-6">
-        {/* Main info */}
+        {/* Main */}
         <div className="md:col-span-2 flex flex-col gap-5">
           <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(15,23,42,0.06)] p-6">
             <h2 className="font-display font-bold text-[#0B0F19] mb-3">Description</h2>
-            <p className="text-sm text-[#64748B] leading-relaxed">{deal.description || "No description yet."}</p>
+            <p className="text-sm text-[#64748B] leading-relaxed">
+              {deal.description || "No description yet."}
+            </p>
           </div>
-          <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(15,23,42,0.06)] p-6">
-            <h2 className="font-display font-bold text-[#0B0F19] mb-3">Tags</h2>
-            <div className="flex flex-wrap gap-2">
-              {deal.tags.map((tag) => (
-                <span key={tag} className="text-xs font-semibold px-3 py-1 rounded-full bg-[#F1F5F9] text-[#64748B]">{tag}</span>
-              ))}
-              {deal.tags.length === 0 && <span className="text-sm text-[#94A3B8]">No tags</span>}
-            </div>
-          </div>
+
           <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(15,23,42,0.06)] p-6">
             <h2 className="font-display font-bold text-[#0B0F19] mb-4">Activity</h2>
-            <div className="flex flex-col gap-4">
-              {[
-                { text: "Deal created", date: deal.createdAt, icon: "✦" },
-                { text: `Assigned to ${deal.assignees.map(a => a.initials).join(", ")}`, date: deal.createdAt, icon: "◎" },
-              ].map((ev, i) => (
-                <div key={i} className="flex gap-3">
-                  <span className="text-[#6C5CE7] text-sm mt-0.5">{ev.icon}</span>
-                  <div>
-                    <p className="text-sm text-[#0B0F19]">{ev.text}</p>
-                    <p className="text-xs text-[#94A3B8] mt-0.5">{new Date(ev.date).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</p>
-                  </div>
-                </div>
-              ))}
+            <div className="flex gap-3">
+              <span className="text-[#6C5CE7] text-sm mt-0.5">✦</span>
+              <div>
+                <p className="text-sm text-[#0B0F19]">Deal created</p>
+                <p className="text-xs text-[#94A3B8] mt-0.5">{createdDate}</p>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Sidebar: deal stats */}
+        {/* Sidebar */}
         <div className="flex flex-col gap-5">
           <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(15,23,42,0.06)] p-6">
             <h2 className="font-display font-bold text-[#0B0F19] mb-4">Deal Details</h2>
             <dl className="flex flex-col gap-3">
-              {[
+              {([
                 { label: "Value", value: formatCurrency(deal.value) },
-                { label: "Client", value: deal.client },
+                { label: "Client", value: deal.client || "—" },
                 { label: "Stage", value: col.label },
-                { label: "Created", value: new Date(deal.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) },
-              ].map(({ label, value }) => (
+                { label: "Created", value: createdShort },
+              ] as { label: string; value: string }[]).map(({ label, value }) => (
                 <div key={label} className="flex justify-between items-start gap-2">
                   <dt className="text-xs font-semibold text-[#94A3B8] uppercase tracking-wide">{label}</dt>
                   <dd className="text-sm font-semibold text-[#0B0F19] text-right">{value}</dd>
@@ -108,17 +152,27 @@ export default async function DealDetailPage({ params }: Props) {
           </div>
 
           <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(15,23,42,0.06)] p-6">
-            <h2 className="font-display font-bold text-[#0B0F19] mb-4">Assignees</h2>
-            <div className="flex flex-col gap-3">
-              {deal.assignees.map((a, i) => (
-                <div key={i} className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: a.color }}>
-                    {a.initials[0]}
-                  </div>
-                  <span className="text-sm font-semibold text-[#0B0F19]">{a.initials}</span>
-                </div>
-              ))}
-            </div>
+            <h2 className="font-display font-bold text-[#0B0F19] mb-4">Artists</h2>
+            {artists.length === 0 ? (
+              <p className="text-sm text-[#94A3B8]">No artists linked</p>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {artists.map(a => (
+                  <Link key={a.id} href={`/app/artists/${a.id}`} className="flex items-center gap-3 group">
+                    <div
+                      className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+                      style={{ backgroundColor: a.color ?? "#6C5CE7" }}
+                    >
+                      {toInitials(a.name)}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-[#0B0F19] group-hover:text-[#6C5CE7] transition-colors truncate">{a.name}</p>
+                      {a.genre && a.genre !== "—" && <p className="text-xs text-[#94A3B8] truncate">{a.genre}</p>}
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="bg-gradient-to-br from-[#6C5CE7] to-[#22D3EE] rounded-2xl p-6 text-white">

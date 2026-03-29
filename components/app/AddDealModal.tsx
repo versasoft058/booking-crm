@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { Deal, DealStatus, COLUMNS } from "@/lib/mockData";
 import { useApp, Client } from "@/lib/AppContext";
 
-const CLIENT_COLORS = ["#6C5CE7","#22D3EE","#10B981","#F59E0B","#0F172A","#EF4444"];
+const ARTIST_COLORS = ["#6C5CE7","#22D3EE","#10B981","#F59E0B","#0F172A","#EF4444"];
 
 interface DealModalProps {
   open: boolean;
@@ -14,9 +14,10 @@ interface DealModalProps {
 }
 
 export default function AddDealModal({ open, editDeal, defaultStatus = "lead", onClose }: DealModalProps) {
-  const { clients, artists, addClient, addDeal, updateDeal } = useApp();
+  const { clients, artists, addClient, addArtist, addDeal, updateDeal } = useApp();
   const isEdit = !!editDeal;
 
+  // Deal fields
   const [name, setName] = useState("");
   const [selectedClientId, setSelectedClientId] = useState<string>("");
   const [selectedArtistIds, setSelectedArtistIds] = useState<string[]>([]);
@@ -24,9 +25,18 @@ export default function AddDealModal({ open, editDeal, defaultStatus = "lead", o
   const [status, setStatus] = useState<DealStatus>(defaultStatus);
   const [description, setDescription] = useState("");
 
+  // Inline new client
   const [showNewClient, setShowNewClient] = useState(false);
   const [newClientName, setNewClientName] = useState("");
-  const [newClientColor, setNewClientColor] = useState(CLIENT_COLORS[0]);
+  const [newClientColor, setNewClientColor] = useState(ARTIST_COLORS[0]);
+
+  // Inline new artist
+  const [showNewArtist, setShowNewArtist] = useState(false);
+  const [newArtistName, setNewArtistName] = useState("");
+  const [newArtistGenre, setNewArtistGenre] = useState("");
+  const [newArtistColor, setNewArtistColor] = useState(ARTIST_COLORS[0]);
+
+  // Submit state
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -46,7 +56,8 @@ export default function AddDealModal({ open, editDeal, defaultStatus = "lead", o
       setName(""); setSelectedClientId(""); setValue(""); setStatus(defaultStatus); setDescription("");
     }
     setSelectedArtistIds([]);
-    setShowNewClient(false); setNewClientName(""); setNewClientColor(CLIENT_COLORS[0]);
+    setShowNewClient(false); setNewClientName(""); setNewClientColor(ARTIST_COLORS[0]);
+    setShowNewArtist(false); setNewArtistName(""); setNewArtistGenre(""); setNewArtistColor(ARTIST_COLORS[0]);
     setSubmitError(null); setSubmitting(false);
     setTimeout(() => nameRef.current?.focus(), 50);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -63,9 +74,7 @@ export default function AddDealModal({ open, editDeal, defaultStatus = "lead", o
   const selectedClient: Client | undefined = clients.find(c => c.id === selectedClientId);
 
   const toggleArtist = (id: string) => {
-    setSelectedArtistIds(prev =>
-      prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id]
-    );
+    setSelectedArtistIds(prev => prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id]);
   };
 
   const handleCreateNewClient = () => {
@@ -73,7 +82,15 @@ export default function AddDealModal({ open, editDeal, defaultStatus = "lead", o
     const created = addClient(newClientName.trim(), newClientColor);
     setSelectedClientId(created.id);
     setShowNewClient(false);
-    setNewClientName(""); setNewClientColor(CLIENT_COLORS[0]);
+    setNewClientName(""); setNewClientColor(ARTIST_COLORS[0]);
+  };
+
+  const handleCreateNewArtist = () => {
+    if (!newArtistName.trim()) return;
+    const created = addArtist(newArtistName.trim(), newArtistGenre.trim(), newArtistColor);
+    setSelectedArtistIds(prev => [...prev, created.id]);
+    setShowNewArtist(false);
+    setNewArtistName(""); setNewArtistGenre(""); setNewArtistColor(ARTIST_COLORS[0]);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -94,7 +111,6 @@ export default function AddDealModal({ open, editDeal, defaultStatus = "lead", o
       const error = await addDeal({ ...payload, artistIds: selectedArtistIds });
       setSubmitting(false);
       if (error) {
-        console.error("[AddDealModal] addDeal failed:", error);
         setSubmitError(error);
         return;
       }
@@ -126,7 +142,6 @@ export default function AddDealModal({ open, editDeal, defaultStatus = "lead", o
           </button>
         </div>
 
-        {/* Form */}
         <form onSubmit={handleSubmit} className="px-6 py-5 flex flex-col gap-4 max-h-[80vh] overflow-y-auto">
           {/* Deal name */}
           <div>
@@ -143,19 +158,15 @@ export default function AddDealModal({ open, editDeal, defaultStatus = "lead", o
                   {selectedClient.initials}
                 </div>
                 <span className="text-sm font-semibold text-[#0B0F19] flex-1">{selectedClient.name}</span>
-                <button type="button" onClick={() => setSelectedClientId("")} className="text-xs text-[#64748B] hover:text-[#0B0F19] transition-colors">
-                  Change
-                </button>
+                <button type="button" onClick={() => setSelectedClientId("")} className="text-xs text-[#64748B] hover:text-[#0B0F19] transition-colors">Change</button>
               </div>
             ) : (
               <div className="flex flex-col gap-1.5">
-                <div className="bg-[#F2F4F6] rounded-lg overflow-hidden max-h-40 overflow-y-auto">
+                <div className="bg-[#F2F4F6] rounded-lg overflow-hidden max-h-36 overflow-y-auto">
                   {clients.map(c => (
                     <button key={c.id} type="button" onClick={() => { setSelectedClientId(c.id); setShowNewClient(false); }}
                       className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-white transition-colors text-left group">
-                      <div className="w-6 h-6 rounded-md flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0" style={{ backgroundColor: c.color }}>
-                        {c.initials}
-                      </div>
+                      <div className="w-6 h-6 rounded-md flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0" style={{ backgroundColor: c.color }}>{c.initials}</div>
                       <span className="text-sm text-[#0B0F19] group-hover:text-[#6C5CE7] transition-colors">{c.name}</span>
                     </button>
                   ))}
@@ -163,9 +174,7 @@ export default function AddDealModal({ open, editDeal, defaultStatus = "lead", o
                 {!showNewClient ? (
                   <button type="button" onClick={() => setShowNewClient(true)}
                     className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-[#6C5CE7] hover:bg-[#6C5CE7]/5 rounded-lg transition-colors">
-                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                      <path d="M7 1.5v11M1.5 7h11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                    </svg>
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1.5v11M1.5 7h11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
                     Create new client
                   </button>
                 ) : (
@@ -178,7 +187,7 @@ export default function AddDealModal({ open, editDeal, defaultStatus = "lead", o
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-[#64748B]">Colour:</span>
                       <div className="flex gap-1.5">
-                        {CLIENT_COLORS.map(c => (
+                        {ARTIST_COLORS.map(c => (
                           <button key={c} type="button" onClick={() => setNewClientColor(c)}
                             className={`w-5 h-5 rounded-full transition-all ${newClientColor === c ? "ring-2 ring-offset-1 ring-[#6C5CE7] scale-110" : "hover:scale-105"}`}
                             style={{ backgroundColor: c }} />
@@ -197,34 +206,67 @@ export default function AddDealModal({ open, editDeal, defaultStatus = "lead", o
             )}
           </div>
 
-          {/* Artists selector (multi-select, add only) */}
+          {/* Artists — multi-select + inline creation (add mode only) */}
           {!isEdit && (
             <div>
               <label className={labelCls}>Artists</label>
-              {artists.length === 0 ? (
-                <p className="text-xs text-[#94A3B8] px-1">No artists yet — add some from the Artists tab</p>
-              ) : (
-                <div className="bg-[#F2F4F6] rounded-lg overflow-hidden max-h-40 overflow-y-auto">
-                  {artists.map(a => {
-                    const selected = selectedArtistIds.includes(a.id);
-                    return (
-                      <button key={a.id} type="button" onClick={() => toggleArtist(a.id)}
-                        className={`w-full flex items-center gap-3 px-3 py-2.5 transition-colors text-left group ${selected ? "bg-[#6C5CE7]/8" : "hover:bg-white"}`}>
-                        <div className="w-6 h-6 rounded-md flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0" style={{ backgroundColor: a.color }}>
-                          {a.initials}
-                        </div>
-                        <span className={`text-sm flex-1 transition-colors ${selected ? "font-semibold text-[#6C5CE7]" : "text-[#0B0F19] group-hover:text-[#6C5CE7]"}`}>{a.name}</span>
-                        {a.genre && a.genre !== "—" && <span className="text-[10px] text-[#94A3B8] hidden sm:block">{a.genre}</span>}
-                        {selected && (
-                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-[#6C5CE7] flex-shrink-0">
-                            <path d="M2.5 7l3.5 3.5 5.5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+              <div className="flex flex-col gap-1.5">
+                {artists.length > 0 && (
+                  <div className="bg-[#F2F4F6] rounded-lg overflow-hidden max-h-36 overflow-y-auto">
+                    {artists.map(a => {
+                      const selected = selectedArtistIds.includes(a.id);
+                      return (
+                        <button key={a.id} type="button" onClick={() => toggleArtist(a.id)}
+                          className={`w-full flex items-center gap-3 px-3 py-2.5 transition-colors text-left group ${selected ? "bg-[#6C5CE7]/8" : "hover:bg-white"}`}>
+                          <div className="w-6 h-6 rounded-md flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0" style={{ backgroundColor: a.color }}>{a.initials}</div>
+                          <span className={`text-sm flex-1 transition-colors ${selected ? "font-semibold text-[#6C5CE7]" : "text-[#0B0F19] group-hover:text-[#6C5CE7]"}`}>{a.name}</span>
+                          {a.genre && a.genre !== "—" && <span className="text-[10px] text-[#94A3B8] hidden sm:block">{a.genre}</span>}
+                          {selected && (
+                            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-[#6C5CE7] flex-shrink-0">
+                              <path d="M2.5 7l3.5 3.5 5.5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {!showNewArtist ? (
+                  <button type="button" onClick={() => setShowNewArtist(true)}
+                    className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-[#6C5CE7] hover:bg-[#6C5CE7]/5 rounded-lg transition-colors">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1.5v11M1.5 7h11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
+                    Create new artist
+                  </button>
+                ) : (
+                  <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-3 flex flex-col gap-3">
+                    <p className="text-xs font-bold text-[#0B0F19]">New artist</p>
+                    <input autoFocus type="text" placeholder="Artist name" value={newArtistName}
+                      onChange={e => setNewArtistName(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleCreateNewArtist(); }}}
+                      className={inputCls} />
+                    <input type="text" placeholder="Genre (optional)" value={newArtistGenre}
+                      onChange={e => setNewArtistGenre(e.target.value)}
+                      className={inputCls} />
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-[#64748B]">Colour:</span>
+                      <div className="flex gap-1.5">
+                        {ARTIST_COLORS.map(c => (
+                          <button key={c} type="button" onClick={() => setNewArtistColor(c)}
+                            className={`w-5 h-5 rounded-full transition-all ${newArtistColor === c ? "ring-2 ring-offset-1 ring-[#6C5CE7] scale-110" : "hover:scale-105"}`}
+                            style={{ backgroundColor: c }} />
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => { setShowNewArtist(false); setNewArtistName(""); setNewArtistGenre(""); }}
+                        className="flex-1 py-1.5 rounded-lg text-xs font-semibold text-[#64748B] bg-white border border-[#E2E8F0] hover:bg-[#F1F5F9] transition-colors">Cancel</button>
+                      <button type="button" onClick={handleCreateNewArtist} disabled={!newArtistName.trim()}
+                        className="flex-1 py-1.5 rounded-lg text-xs font-bold text-white bg-gradient-to-r from-[#6C5CE7] to-[#22D3EE] disabled:opacity-40 transition-opacity">Add & Select</button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
