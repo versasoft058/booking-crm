@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Next.js Dev Server",
+      "runtimeExecutable": "/Users/michal/.nvm/versions/node/v20.20.2/bin/node",
+      "runtimeArgs": ["/Users/michal/Documents/booking agency/start-dev.cjs"],
+      "port": 3000,
+      "autoPort": true
+    }
+  ]
+}
