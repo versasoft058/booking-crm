@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Deal, DealStatus, COLUMNS } from "@/lib/mockData";
 import { useApp, Client } from "@/lib/AppContext";
+import { supabase } from "@/lib/supabaseClient";
 
 const ARTIST_COLORS = ["#6C5CE7","#22D3EE","#10B981","#F59E0B","#0F172A","#EF4444"];
 
@@ -14,7 +15,7 @@ interface DealModalProps {
 }
 
 export default function AddDealModal({ open, editDeal, defaultStatus = "lead", onClose }: DealModalProps) {
-  const { clients, artists, addClient, addArtist, addDeal, updateDeal } = useApp();
+  const { clients, artists, addClient, addArtist, addDeal, updateDeal, updateDealArtists } = useApp();
   const isEdit = !!editDeal;
 
   // Deal fields
@@ -29,6 +30,7 @@ export default function AddDealModal({ open, editDeal, defaultStatus = "lead", o
   const [showNewClient, setShowNewClient] = useState(false);
   const [newClientName, setNewClientName] = useState("");
   const [newClientColor, setNewClientColor] = useState(ARTIST_COLORS[0]);
+  const [newClientContactPerson, setNewClientContactPerson] = useState("");
 
   // Inline new artist
   const [showNewArtist, setShowNewArtist] = useState(false);
@@ -44,6 +46,7 @@ export default function AddDealModal({ open, editDeal, defaultStatus = "lead", o
 
   const clientByName = (n: string) => clients.find(c => c.name === n);
 
+  // Reset form on open / deal change
   useEffect(() => {
     if (!open) return;
     if (editDeal) {
@@ -54,14 +57,23 @@ export default function AddDealModal({ open, editDeal, defaultStatus = "lead", o
       setDescription(editDeal.description ?? "");
     } else {
       setName(""); setSelectedClientId(""); setValue(""); setStatus(defaultStatus); setDescription("");
+      setSelectedArtistIds([]);
     }
-    setSelectedArtistIds([]);
-    setShowNewClient(false); setNewClientName(""); setNewClientColor(ARTIST_COLORS[0]);
+    setShowNewClient(false); setNewClientName(""); setNewClientColor(ARTIST_COLORS[0]); setNewClientContactPerson("");
     setShowNewArtist(false); setNewArtistName(""); setNewArtistGenre(""); setNewArtistColor(ARTIST_COLORS[0]);
     setSubmitError(null); setSubmitting(false);
     setTimeout(() => nameRef.current?.focus(), 50);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editDeal?.id, defaultStatus]);
+
+  // Fetch existing deal_artists when editing
+  useEffect(() => {
+    if (!open || !editDeal) return;
+    supabase.from("deal_artists").select("artist_id").eq("deal_id", editDeal.id)
+      .then(({ data }) => {
+        if (data) setSelectedArtistIds(data.map((r: { artist_id: string }) => r.artist_id));
+      });
+  }, [open, editDeal?.id]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -79,10 +91,10 @@ export default function AddDealModal({ open, editDeal, defaultStatus = "lead", o
 
   const handleCreateNewClient = () => {
     if (!newClientName.trim()) return;
-    const created = addClient(newClientName.trim(), newClientColor);
+    const created = addClient(newClientName.trim(), newClientColor, undefined, undefined, newClientContactPerson.trim() || undefined);
     setSelectedClientId(created.id);
     setShowNewClient(false);
-    setNewClientName(""); setNewClientColor(ARTIST_COLORS[0]);
+    setNewClientName(""); setNewClientColor(ARTIST_COLORS[0]); setNewClientContactPerson("");
   };
 
   const handleCreateNewArtist = () => {
@@ -103,7 +115,10 @@ export default function AddDealModal({ open, editDeal, defaultStatus = "lead", o
     console.log("[AddDealModal] submit payload:", payload, "artistIds:", selectedArtistIds);
 
     if (isEdit && editDeal) {
+      setSubmitting(true);
       updateDeal({ ...editDeal, ...payload });
+      await updateDealArtists(editDeal.id, selectedArtistIds);
+      setSubmitting(false);
       onClose();
     } else {
       setSubmitting(true);
@@ -184,6 +199,9 @@ export default function AddDealModal({ open, editDeal, defaultStatus = "lead", o
                       onChange={e => setNewClientName(e.target.value)}
                       onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleCreateNewClient(); }}}
                       className={inputCls} />
+                    <input type="text" placeholder="Contact person (optional)" value={newClientContactPerson}
+                      onChange={e => setNewClientContactPerson(e.target.value)}
+                      className={inputCls} />
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-[#64748B]">Colour:</span>
                       <div className="flex gap-1.5">
@@ -195,7 +213,7 @@ export default function AddDealModal({ open, editDeal, defaultStatus = "lead", o
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      <button type="button" onClick={() => { setShowNewClient(false); setNewClientName(""); }}
+                      <button type="button" onClick={() => { setShowNewClient(false); setNewClientName(""); setNewClientContactPerson(""); }}
                         className="flex-1 py-1.5 rounded-lg text-xs font-semibold text-[#64748B] bg-white border border-[#E2E8F0] hover:bg-[#F1F5F9] transition-colors">Cancel</button>
                       <button type="button" onClick={handleCreateNewClient} disabled={!newClientName.trim()}
                         className="flex-1 py-1.5 rounded-lg text-xs font-bold text-white bg-gradient-to-r from-[#6C5CE7] to-[#22D3EE] disabled:opacity-40 transition-opacity">Add & Select</button>
@@ -206,69 +224,67 @@ export default function AddDealModal({ open, editDeal, defaultStatus = "lead", o
             )}
           </div>
 
-          {/* Artists — multi-select + inline creation (add mode only) */}
-          {!isEdit && (
-            <div>
-              <label className={labelCls}>Artists</label>
-              <div className="flex flex-col gap-1.5">
-                {artists.length > 0 && (
-                  <div className="bg-[#F2F4F6] rounded-lg overflow-hidden max-h-36 overflow-y-auto">
-                    {artists.map(a => {
-                      const selected = selectedArtistIds.includes(a.id);
-                      return (
-                        <button key={a.id} type="button" onClick={() => toggleArtist(a.id)}
-                          className={`w-full flex items-center gap-3 px-3 py-2.5 transition-colors text-left group ${selected ? "bg-[#6C5CE7]/8" : "hover:bg-white"}`}>
-                          <div className="w-6 h-6 rounded-md flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0" style={{ backgroundColor: a.color }}>{a.initials}</div>
-                          <span className={`text-sm flex-1 transition-colors ${selected ? "font-semibold text-[#6C5CE7]" : "text-[#0B0F19] group-hover:text-[#6C5CE7]"}`}>{a.name}</span>
-                          {a.genre && a.genre !== "—" && <span className="text-[10px] text-[#94A3B8] hidden sm:block">{a.genre}</span>}
-                          {selected && (
-                            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-[#6C5CE7] flex-shrink-0">
-                              <path d="M2.5 7l3.5 3.5 5.5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
+          {/* Artists — multi-select + inline creation (add + edit modes) */}
+          <div>
+            <label className={labelCls}>Artists</label>
+            <div className="flex flex-col gap-1.5">
+              {artists.length > 0 && (
+                <div className="bg-[#F2F4F6] rounded-lg overflow-hidden max-h-36 overflow-y-auto">
+                  {artists.map(a => {
+                    const selected = selectedArtistIds.includes(a.id);
+                    return (
+                      <button key={a.id} type="button" onClick={() => toggleArtist(a.id)}
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 transition-colors text-left group ${selected ? "bg-[#6C5CE7]/8" : "hover:bg-white"}`}>
+                        <div className="w-6 h-6 rounded-md flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0" style={{ backgroundColor: a.color }}>{a.initials}</div>
+                        <span className={`text-sm flex-1 transition-colors ${selected ? "font-semibold text-[#6C5CE7]" : "text-[#0B0F19] group-hover:text-[#6C5CE7]"}`}>{a.name}</span>
+                        {a.genre && a.genre !== "—" && <span className="text-[10px] text-[#94A3B8] hidden sm:block">{a.genre}</span>}
+                        {selected && (
+                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-[#6C5CE7] flex-shrink-0">
+                            <path d="M2.5 7l3.5 3.5 5.5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
 
-                {!showNewArtist ? (
-                  <button type="button" onClick={() => setShowNewArtist(true)}
-                    className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-[#6C5CE7] hover:bg-[#6C5CE7]/5 rounded-lg transition-colors">
-                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1.5v11M1.5 7h11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
-                    Create new artist
-                  </button>
-                ) : (
-                  <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-3 flex flex-col gap-3">
-                    <p className="text-xs font-bold text-[#0B0F19]">New artist</p>
-                    <input autoFocus type="text" placeholder="Artist name" value={newArtistName}
-                      onChange={e => setNewArtistName(e.target.value)}
-                      onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleCreateNewArtist(); }}}
-                      className={inputCls} />
-                    <input type="text" placeholder="Genre (optional)" value={newArtistGenre}
-                      onChange={e => setNewArtistGenre(e.target.value)}
-                      className={inputCls} />
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-[#64748B]">Colour:</span>
-                      <div className="flex gap-1.5">
-                        {ARTIST_COLORS.map(c => (
-                          <button key={c} type="button" onClick={() => setNewArtistColor(c)}
-                            className={`w-5 h-5 rounded-full transition-all ${newArtistColor === c ? "ring-2 ring-offset-1 ring-[#6C5CE7] scale-110" : "hover:scale-105"}`}
-                            style={{ backgroundColor: c }} />
-                        ))}
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <button type="button" onClick={() => { setShowNewArtist(false); setNewArtistName(""); setNewArtistGenre(""); }}
-                        className="flex-1 py-1.5 rounded-lg text-xs font-semibold text-[#64748B] bg-white border border-[#E2E8F0] hover:bg-[#F1F5F9] transition-colors">Cancel</button>
-                      <button type="button" onClick={handleCreateNewArtist} disabled={!newArtistName.trim()}
-                        className="flex-1 py-1.5 rounded-lg text-xs font-bold text-white bg-gradient-to-r from-[#6C5CE7] to-[#22D3EE] disabled:opacity-40 transition-opacity">Add & Select</button>
+              {!showNewArtist ? (
+                <button type="button" onClick={() => setShowNewArtist(true)}
+                  className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-[#6C5CE7] hover:bg-[#6C5CE7]/5 rounded-lg transition-colors">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1.5v11M1.5 7h11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
+                  Create new artist
+                </button>
+              ) : (
+                <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-3 flex flex-col gap-3">
+                  <p className="text-xs font-bold text-[#0B0F19]">New artist</p>
+                  <input autoFocus type="text" placeholder="Artist name" value={newArtistName}
+                    onChange={e => setNewArtistName(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleCreateNewArtist(); }}}
+                    className={inputCls} />
+                  <input type="text" placeholder="Genre (optional)" value={newArtistGenre}
+                    onChange={e => setNewArtistGenre(e.target.value)}
+                    className={inputCls} />
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-[#64748B]">Colour:</span>
+                    <div className="flex gap-1.5">
+                      {ARTIST_COLORS.map(c => (
+                        <button key={c} type="button" onClick={() => setNewArtistColor(c)}
+                          className={`w-5 h-5 rounded-full transition-all ${newArtistColor === c ? "ring-2 ring-offset-1 ring-[#6C5CE7] scale-110" : "hover:scale-105"}`}
+                          style={{ backgroundColor: c }} />
+                      ))}
                     </div>
                   </div>
-                )}
-              </div>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => { setShowNewArtist(false); setNewArtistName(""); setNewArtistGenre(""); }}
+                      className="flex-1 py-1.5 rounded-lg text-xs font-semibold text-[#64748B] bg-white border border-[#E2E8F0] hover:bg-[#F1F5F9] transition-colors">Cancel</button>
+                    <button type="button" onClick={handleCreateNewArtist} disabled={!newArtistName.trim()}
+                      className="flex-1 py-1.5 rounded-lg text-xs font-bold text-white bg-gradient-to-r from-[#6C5CE7] to-[#22D3EE] disabled:opacity-40 transition-opacity">Add & Select</button>
+                  </div>
+                </div>
+              )}
             </div>
-          )}
+          </div>
 
           {/* Value */}
           <div>

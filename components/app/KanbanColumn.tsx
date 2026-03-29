@@ -13,6 +13,7 @@ interface KanbanColumnProps {
   onDragOver: (e: React.DragEvent) => void;
   onDragLeave: () => void;
   onDrop: (e: React.DragEvent) => void;
+  onDragEnterCard: (id: string) => void;
   onAddDeal?: () => void;
   onEdit: (deal: Deal) => void;
   onDelete: (id: string) => void;
@@ -21,7 +22,7 @@ interface KanbanColumnProps {
 export default function KanbanColumn({
   config, deals, draggedId, isDragOver,
   onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop,
-  onAddDeal, onEdit, onDelete,
+  onDragEnterCard, onAddDeal, onEdit, onDelete,
 }: KanbanColumnProps) {
   const totalValue = deals.reduce((s, d) => s + d.value, 0);
 
@@ -61,6 +62,7 @@ export default function KanbanColumn({
             isDragging={draggedId === deal.id}
             onDragStart={onDragStart}
             onDragEnd={onDragEnd}
+            onDragEnter={onDragEnterCard}
             onEdit={onEdit}
             onDelete={onDelete}
           />

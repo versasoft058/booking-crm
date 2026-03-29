@@ -8,26 +8,62 @@ import AddDealModal from "./AddDealModal";
 import Topbar from "./Topbar";
 
 export default function KanbanBoard() {
-  const { deals, deleteDeal, updateDeal, loading } = useApp();
+  const { deals, deleteDeal, updateDeal, reorderDeals, loading } = useApp();
 
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverCol, setDragOverCol] = useState<DealStatus | null>(null);
+  const [dragOverCardId, setDragOverCardId] = useState<string | null>(null);
   const [modal, setModal] = useState<null | { mode: "add"; status: DealStatus } | { mode: "edit"; deal: Deal }>(null);
 
   const handleDragStart = useCallback((id: string) => setDraggedId(id), []);
-  const handleDragEnd = useCallback(() => { setDraggedId(null); setDragOverCol(null); }, []);
+  const handleDragEnd = useCallback(() => {
+    setDraggedId(null);
+    setDragOverCol(null);
+    setDragOverCardId(null);
+  }, []);
   const handleDragOver = useCallback((e: React.DragEvent, col: DealStatus) => {
     e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverCol(col);
   }, []);
   const handleDragLeave = useCallback(() => setDragOverCol(null), []);
+
   const handleDrop = useCallback((e: React.DragEvent, col: DealStatus) => {
     e.preventDefault();
     if (draggedId) {
       const deal = deals.find(d => d.id === draggedId);
-      if (deal && deal.status !== col) updateDeal({ ...deal, status: col });
+      if (deal) {
+        if (deal.status !== col) {
+          // Cross-column: place at top of target column
+          const targetColDeals = deals
+            .filter(d => d.status === col)
+            .sort((a, b) => a.position - b.position);
+          reorderDeals([
+            { id: draggedId, position: 0 },
+            ...targetColDeals.map((d, i) => ({ id: d.id, position: i + 1 })),
+          ]);
+          updateDeal({ ...deal, status: col, position: 0 });
+        } else {
+          // Same-column reorder
+          const colDeals = deals
+            .filter(d => d.status === col)
+            .sort((a, b) => a.position - b.position);
+          const withoutDragged = colDeals.filter(d => d.id !== draggedId);
+          const insertBefore = dragOverCardId
+            ? withoutDragged.findIndex(d => d.id === dragOverCardId)
+            : -1;
+          const insertIdx = insertBefore === -1 ? withoutDragged.length : insertBefore;
+          const newOrder = [
+            ...withoutDragged.slice(0, insertIdx),
+            deal,
+            ...withoutDragged.slice(insertIdx),
+          ];
+          reorderDeals(newOrder.map((d, i) => ({ id: d.id, position: i })));
+        }
+      }
     }
-    setDraggedId(null); setDragOverCol(null);
-  }, [draggedId, deals, updateDeal]);
+    setDraggedId(null);
+    setDragOverCol(null);
+    setDragOverCardId(null);
+  }, [draggedId, dragOverCardId, deals, updateDeal, reorderDeals]);
 
   const totalValue = deals.filter(d => d.status !== "lost").reduce((s, d) => s + d.value, 0);
 
@@ -105,7 +141,7 @@ export default function KanbanBoard() {
               <KanbanColumn
                 key={col.id}
                 config={col}
-                deals={deals.filter(d => d.status === col.id)}
+                deals={deals.filter(d => d.status === col.id).sort((a, b) => a.position - b.position)}
                 draggedId={draggedId}
                 isDragOver={dragOverCol === col.id}
                 onDragStart={handleDragStart}
@@ -113,6 +149,7 @@ export default function KanbanBoard() {
                 onDragOver={e => handleDragOver(e, col.id)}
                 onDragLeave={handleDragLeave}
                 onDrop={e => handleDrop(e, col.id)}
+                onDragEnterCard={id => setDragOverCardId(id)}
                 onAddDeal={() => setModal({ mode: "add", status: col.id })}
                 onEdit={deal => setModal({ mode: "edit", deal })}
                 onDelete={deleteDeal}

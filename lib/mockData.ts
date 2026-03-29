@@ -15,6 +15,7 @@ export interface Deal {
   createdAt: string;
   description: string;
   tags: string[];
+  position: number;
 }
 
 export interface ColumnConfig {

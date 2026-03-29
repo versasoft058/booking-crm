@@ -9,11 +9,12 @@ interface DealCardProps {
   isDragging: boolean;
   onDragStart: (id: string) => void;
   onDragEnd: () => void;
+  onDragEnter: (id: string) => void;
   onEdit: (deal: Deal) => void;
   onDelete: (id: string) => void;
 }
 
-export default function DealCard({ deal, isDragging, onDragStart, onDragEnd, onEdit, onDelete }: DealCardProps) {
+export default function DealCard({ deal, isDragging, onDragStart, onDragEnd, onDragEnter, onEdit, onDelete }: DealCardProps) {
   const col = COLUMNS.find((c) => c.id === deal.status)!;
   const router = useRouter();
   const didDragRef = useRef(false);
@@ -33,6 +34,7 @@ export default function DealCard({ deal, isDragging, onDragStart, onDragEnd, onE
         onDragStart(deal.id);
       }}
       onDragEnd={onDragEnd}
+      onDragEnter={() => onDragEnter(deal.id)}
       className={`group relative bg-white rounded-xl p-4 cursor-pointer select-none transition-all duration-200
         ${isDragging
           ? "opacity-40 scale-95 shadow-none cursor-grabbing"

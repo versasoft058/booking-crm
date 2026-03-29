@@ -11,6 +11,7 @@ export interface Client {
   color: string;
   email?: string;
   phone?: string;
+  contact_person?: string;
 }
 
 export interface Artist {
@@ -28,11 +29,13 @@ interface AppContextValue {
   deals: Deal[];
   artists: Artist[];
   loading: boolean;
-  addClient: (name: string, color: string, email?: string, phone?: string) => Client;
+  addClient: (name: string, color: string, email?: string, phone?: string, contact_person?: string) => Client;
   addArtist: (name: string, genre: string, color: string, email?: string, phone?: string) => Artist;
   addDeal: (data: { name: string; client: string; value: number; status: DealStatus; description: string; artistIds?: string[] }) => Promise<string | null>;
   updateDeal: (deal: Deal) => void;
   deleteDeal: (id: string) => void;
+  reorderDeals: (updates: { id: string; position: number }[]) => Promise<void>;
+  updateDealArtists: (dealId: string, newArtistIds: string[]) => Promise<void>;
   formatCurrency: (v: number) => string;
 }
 
@@ -67,7 +70,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         { data: clientsData, error: clientsErr },
         { data: artistsData, error: artistsErr },
       ] = await Promise.all([
-        supabase.from("deals").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
+        supabase.from("deals").select("*").eq("user_id", user.id)
+          .order("position", { ascending: true })
+          .order("created_at", { ascending: false }),
         supabase.from("clients").select("*").eq("user_id", user.id),
         supabase.from("artists").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
       ]);
@@ -87,6 +92,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           assignees: [],
           createdAt: d.created_at?.split("T")[0] ?? "",
           tags: [],
+          position: d.position ?? 0,
         })));
       }
 
@@ -98,6 +104,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           color: c.color ?? "#6C5CE7",
           email: c.email ?? undefined,
           phone: c.phone ?? undefined,
+          contact_person: c.contact_person ?? undefined,
         })));
       }
 
@@ -118,14 +125,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     load();
   }, []);
 
-  const addClient = useCallback((name: string, color: string, email?: string, phone?: string): Client => {
+  const addClient = useCallback((name: string, color: string, email?: string, phone?: string, contact_person?: string): Client => {
     const tempId = `c${Date.now()}`;
-    const newClient: Client = { id: tempId, name: name.trim(), initials: toInitials(name), color, email, phone };
+    const newClient: Client = { id: tempId, name: name.trim(), initials: toInitials(name), color, email, phone, contact_person };
     setClients(prev => [...prev, newClient]);
 
     if (userId) {
       supabase.from("clients")
-        .insert({ name: name.trim(), color, email: email || null, phone: phone || null, user_id: userId })
+        .insert({ name: name.trim(), color, email: email || null, phone: phone || null, contact_person: contact_person || null, user_id: userId })
         .select()
         .single()
         .then(({ data, error }) => {
@@ -179,6 +186,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       value: data.value,
       status: toDbStatus(data.status),
       user_id: user.id,
+      position: 0,
     };
     console.log("[addDeal] insert payload:", payload);
 
@@ -215,6 +223,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         assignees: [],
         createdAt: inserted.created_at?.split("T")[0] ?? today,
         tags: [],
+        position: inserted.position ?? 0,
       },
       ...prev,
     ]);
@@ -225,7 +234,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const updateDeal = useCallback((updated: Deal) => {
     setDeals(prev => prev.map(d => d.id === updated.id ? updated : d));
     supabase.from("deals")
-      .update({ status: toDbStatus(updated.status), name: updated.name, client_name: updated.client, value: updated.value })
+      .update({
+        status: toDbStatus(updated.status),
+        name: updated.name,
+        client_name: updated.client,
+        value: updated.value,
+        description: updated.description,
+        position: updated.position,
+      })
       .eq("id", updated.id)
       .then(({ error }) => {
         if (error) console.error("[updateDeal] error:", error.message);
@@ -242,8 +258,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
   }, []);
 
+  const reorderDeals = useCallback(async (updates: { id: string; position: number }[]) => {
+    setDeals(prev => {
+      const map = new Map(updates.map(u => [u.id, u.position]));
+      return prev
+        .map(d => map.has(d.id) ? { ...d, position: map.get(d.id)! } : d)
+        .sort((a, b) => a.position - b.position);
+    });
+    await Promise.all(
+      updates.map(u => supabase.from("deals").update({ position: u.position }).eq("id", u.id))
+    );
+  }, []);
+
+  const updateDealArtists = useCallback(async (dealId: string, newArtistIds: string[]) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    await supabase.from("deal_artists").delete().eq("deal_id", dealId);
+    if (newArtistIds.length > 0) {
+      await supabase.from("deal_artists").insert(
+        newArtistIds.map(artistId => ({ deal_id: dealId, artist_id: artistId, user_id: user.id }))
+      );
+    }
+  }, []);
+
   return (
-    <AppContext.Provider value={{ clients, deals, artists, loading, addClient, addArtist, addDeal, updateDeal, deleteDeal, formatCurrency }}>
+    <AppContext.Provider value={{ clients, deals, artists, loading, addClient, addArtist, addDeal, updateDeal, deleteDeal, reorderDeals, updateDealArtists, formatCurrency }}>
       {children}
     </AppContext.Provider>
   );
