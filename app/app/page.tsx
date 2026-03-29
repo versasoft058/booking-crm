@@ -1,3 +1,5 @@
+'use client'
+export const dynamic = 'force-dynamic'
 import KanbanBoard from "@/components/app/KanbanBoard";
 import type { Metadata } from "next";
 

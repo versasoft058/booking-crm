@@ -1,3 +1,5 @@
+'use client'
+export const dynamic = 'force-dynamic'
 import Link from "next/link";
 import { initialDeals, COLUMNS, formatCurrency } from "@/lib/mockData";
 import type { Metadata } from "next";
